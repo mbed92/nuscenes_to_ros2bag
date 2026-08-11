@@ -1,5 +1,7 @@
 # nuscenes_to_ros2bag
 
+<!-- cspell:ignore basemap mypy protoc XYZIRC -->
+
 ## Usage
 
 ### Converting nuScenes data to ROS2 bag
@@ -100,3 +102,18 @@ nuscenes2mcap is licensed under the [MIT License](https://opensource.org/license
 ## Stay in touch
 
 Join our [Slack channel](https://foxglove.dev/join-slack) to ask questions, share feedback, and stay up to date on what our team is working on.
+
+## LiDAR point cloud layout
+
+The `/LIDAR_TOP` topic uses the 16-byte `PointXYZIRC` layout required by Autoware CenterPoint:
+
+| Field | Type | Offset |
+| --- | --- | ---: |
+| `x` | `FLOAT32` | 0 |
+| `y` | `FLOAT32` | 4 |
+| `z` | `FLOAT32` | 8 |
+| `intensity` | `UINT8` | 12 |
+| `return_type` | `UINT8` | 13 |
+| `channel` | `UINT16` | 14 |
+
+Intensity is rounded and clamped to the `UINT8` range without normalization, `return_type` is zero, and the nuScenes ring value is rounded and clamped into `channel`. Bags generated with the previous five-`FLOAT32`, 20-byte layout are incompatible with CenterPoint and must be regenerated.

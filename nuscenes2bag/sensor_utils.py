@@ -10,29 +10,44 @@ def get_radar(data_path, sample_data, frame_id):
 
 def get_lidar(data_path, sample_data, frame_id):
     pc_filename = data_path / sample_data['filename']
-    pc_filesize = os.stat(pc_filename).st_size
+    raw_points = np.fromfile(pc_filename, dtype="<f4")
+    if raw_points.size % 5 != 0:
+        raise ValueError(
+            f"Malformed nuScenes LiDAR file {pc_filename}: "
+            f"expected five float32 values per point, got {raw_points.size} values"
+        )
 
-    with open(pc_filename, 'rb') as pc_file:
-        msg = PointCloud2()
-        msg.header.frame_id = frame_id
-        msg.header.stamp = get_time(sample_data)
+    raw_points = raw_points.reshape((-1, 5))
+    point_dtype = np.dtype([
+        ("x", "<f4"), ("y", "<f4"), ("z", "<f4"),
+        ("intensity", "u1"), ("return_type", "u1"), ("channel", "<u2"),
+    ])
+    points = np.zeros(raw_points.shape[0], dtype=point_dtype)
+    points["x"] = raw_points[:, 0]
+    points["y"] = raw_points[:, 1]
+    points["z"] = raw_points[:, 2]
+    points["intensity"] = np.clip(np.rint(raw_points[:, 3]), 0, 255).astype(np.uint8)
+    points["channel"] = np.clip(np.rint(raw_points[:, 4]), 0, 65535).astype(np.uint16)
 
-        msg.fields = [
-            PointField(name='x', offset=0, datatype=PointField.FLOAT32, count=1),
-            PointField(name='y', offset=4, datatype=PointField.FLOAT32, count=1),
-            PointField(name='z', offset=8, datatype=PointField.FLOAT32, count=1),
-            PointField(name='intensity', offset=12, datatype=PointField.FLOAT32, count=1),
-            PointField(name='ring', offset=16, datatype=PointField.FLOAT32, count=1),
-        ]
-
-        msg.is_bigendian = False
-        msg.is_dense = True
-        msg.point_step = len(msg.fields) * 4 # 4 bytes per field
-        msg.row_step = pc_filesize
-        msg.width = round(pc_filesize / msg.point_step)
-        msg.height = 1 # unordered
-        msg.data = pc_file.read()
-        return msg
+    msg = PointCloud2()
+    msg.header.frame_id = frame_id
+    msg.header.stamp = get_time(sample_data)
+    msg.fields = [
+        PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+        PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+        PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+        PointField(name="intensity", offset=12, datatype=PointField.UINT8, count=1),
+        PointField(name="return_type", offset=13, datatype=PointField.UINT8, count=1),
+        PointField(name="channel", offset=14, datatype=PointField.UINT16, count=1),
+    ]
+    msg.is_bigendian = False
+    msg.is_dense = True
+    msg.point_step = point_dtype.itemsize
+    msg.width = raw_points.shape[0]
+    msg.row_step = msg.width * msg.point_step
+    msg.height = 1  # unordered
+    msg.data = points.tobytes()
+    return msg
 
 def get_camera(data_path, sample_data, frame_id):
     jpg_filename = data_path / sample_data['filename']
